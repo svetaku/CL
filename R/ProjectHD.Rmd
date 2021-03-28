@@ -1,0 +1,164 @@
+---
+title: "Проект: Рабочие часы vs. Тревожные расстройства"
+author: "Sveta Kuznetsova"
+date: "12 03 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+<br><br>
+
+*В своем проекте я использовала данные о ряде стран в период с ~1990 по 2017 годы, в которых исследовала связь между средним количеством рабочих часов на человека и процентом населения с тревожными расстройствами.*
+
+<br><br>
+Датасеты взяты с сайта  [Our World in Data](https://ourworldindata.org/):
+<br>
+1. [Annual working hours per worker, various sources](https://ourworldindata.org/grapher/compare-sources-working-hours?tab=chart&stackMode=absolute&time=earliest..latest&region=World) - количество рабочих часов в год на человека, различные источники <br>
+2. [Share of population with anxiety disorders](https://ourworldindata.org/grapher/share-with-anxiety-disorders?time=2017) - доля населения
+с тревожными расстройствами, Global Burden of Disease Study 2017 (GBD 2017)
+<br><br><br>
+В объединенном виде эти датасеты выглядят вот так:
+
+
+```{r data, echo=FALSE, include=FALSE}
+library(tidyverse)
+'%ni%' <- Negate('%in%')
+hd <- read_csv("D:\\R\\project\\ready_df4.csv")
+hd <- hd %>% select(2:6) %>% 
+  filter(Country %ni% c("Cambodia", "Lithuania", "Poland")) %>% 
+  mutate(Hours = Hour / 52) %>% 
+  select(Country, Year, Disorder, Hours)
+```
+```{r, echo = FALSE}
+rmarkdown::paged_table(hd)
+summary(hd %>% group_by(Country))
+cntr <- hd$Country
+text <- "Unique countries in dataset: "
+print(paste(text,n_distinct(cntr)))
+```
+
+<br><br><br>
+
+
+## Гипотезы
+
+<br><br>
+
+### Первая гипотеза:
+
+<br>
+
+> *Количество рабочих часов коррелирует с уровнем тревожности среди населения (а именно, сказывается на нем негативно)*
+
+
+<br><br>
+***Plot 1: динамика изменения количества рабочих часов и уровня тревожности среди населения с 1990 по 2017 гг. по странам***
+<br><br>
+```{r viz1, echo = FALSE, out.width="90%"}
+ylim.prim <- c(0, 60) 
+ylim.sec <- c(0, 10)  
+
+b <- diff(ylim.prim)/diff(ylim.sec)
+a <- ylim.prim[1] - b*ylim.sec[1]
+
+hd %>% 
+  filter(Country %in% c("Bangladesh", "Belgium", "Chile", "China", "Denmark", "Finland", "Israel", "New Zealand", "Vietnam", "South Korea", "Netherlands", "Italy")) %>% 
+  ggplot(aes(x = Year, y = Hours)) +
+  geom_col(fill = "#990099", alpha = .6) +
+  geom_line(aes(y = a + Disorder*b), color = "#FFFF00", size = 2, alpha = .8) +
+  scale_y_continuous("Working hours per week", sec.axis = sec_axis(~ (. - a)/b, name = "% of population with anxiety disorder")) +
+  scale_x_continuous("Year") +
+  theme_minimal() +
+  facet_wrap(~ Country)
+```
+
+<br><br>
+Проверим эту гипотезу корреляционным тестом Пирсена
+<br><br>
+```{r cortest, echo = TRUE}
+cor.test(hd$Hours, hd$Disorder)
+```
+<br><br>А также Спирмена и Кэнделла<br><br>
+```{r cortest2, echo=TRUE}
+cor.test(hd$Hours, hd$Disorder, method = "spearman")
+cor.test(hd$Hours, hd$Disorder, method = "kendall")
+```
+
+<br><br>И составим корреляционную матрицу
+```{r cortest3, echo = TRUE}
+print(hd %>% select(Disorder, Hours, Year) %>% psych::corr.test(adjust = "bonferroni"), digits=4)
+```
+<br><br>
+***Plot 2: Корреляция между показателями рабочих часов и процентом населения с тревожными расстройствами по всей выборке***
+<br><br>
+```{r viz2, echo = FALSE}
+ggplot(hd, aes(x = Disorder, y = Hours)) +
+  geom_point(size = 2, color = "#990099", alpha = .6) +
+  geom_smooth(span = 0.8, method = "lm", color = "#990099", fill = "#FFFF00", size = .9, alpha = .25) +
+  scale_y_continuous("Working hours per week") +
+  scale_x_continuous("% of population with anxiety disorder") +
+  theme_minimal() 
+```
+<br><br>
+
+### Вторая гипотеза:
+
+<br>
+
+> В целом по странам коэффициент (hours x disorder) снизился в период с 1990 по 2017 годы
+
+<br><br>
+***Plot 3: Распределение стран на плоскости часы/расстройства за все годы сразу, с динамикой изменения***
+<br><br>
+```{r viz3, echo = FALSE, out.width="100%"}
+
+yearmax <- hd %>% 
+  filter(Country %in% c("Bangladesh", "Belgium", "Chile", "China", "Denmark", "Finland", "Israel", "New Zealand", "Vietnam", "South Korea", "Netherlands", "Italy", "Russia")) %>%
+  filter(Year == "2017") 
+yearmin <- hd %>% 
+  filter(Country %in% c("Bangladesh", "Belgium", "Chile", "China", "Denmark", "Finland", "Israel", "New Zealand", "Vietnam", "South Korea", "Netherlands", "Italy", "Russia")) %>%
+  filter(Year == "1992")
+
+hd %>% 
+  filter(Country %in% c("Bangladesh", "Belgium", "Chile", "China", "Denmark", "Finland", "Israel", "New Zealand", "Vietnam", "South Korea", "Netherlands", "Italy", "Russia")) %>%
+  ggplot(aes(x = Disorder, y = Hours)) +
+  geom_line(aes(color = Country), size = 2, alpha = .7, show.legend = FALSE) +
+  geom_point(data = yearmax, size = 3, aes(color = Country), show.legend = FALSE) +
+  geom_text(size = 2.8, data = yearmax, aes(label=paste(Country,",",Year)), hjust = "bottom", nudge_x = 0.1, angle = 40, check_overlap = TRUE) +
+  geom_point(data = yearmin, size = 3, aes(color = Country), show.legend = FALSE) +
+  geom_text(size = 2.8, data = yearmin, aes(label=paste(Country,",",Year)), hjust = "bottom", nudge_x = 0.1, angle = 40, check_overlap = TRUE) +
+  scale_y_continuous("Working hours per week") +
+  scale_x_continuous("% of population with anxiety disorder") +
+  theme_minimal() 
+```
+
+<br><br>
+Проверим эту гипотезу двухвыборочным зависимым t-тестом
+<br><br>
+```{r ratio, echo = FALSE, include=FALSE}
+hdratio <- hd %>% 
+  mutate(Ratio = Hours * Disorder) %>% 
+  select(Country, Year, Ratio) %>% 
+  filter(Year == 2017 | Year == 1992) %>% 
+  pivot_wider(names_from = "Year", values_from = "Ratio")
+```
+```{r ttest, echo = TRUE}
+t.test(hdratio$`1992`, hdratio$`2017`, paired = TRUE, alternative = "two.sided")
+```
+<br><br>
+***Plot 4: Визуализация изменения коэффициента (hours x disorder) в странах с 1992 по 2017 годы***
+<br><br>
+```{r viz4, echo=FALSE}
+hdratio %>% 
+  filter(Country %in% c("Bangladesh", "Belgium", "Chile", "China", "Denmark", "Finland", "Israel", "New Zealand", "Vietnam", "South Korea", "Netherlands", "Italy", "Russia")) %>%
+  pivot_longer(cols = c("1992", "2017"), names_to = "Year", values_to = "Ratio") %>% 
+  ggplot(aes(x = Year, y = Ratio, group = Country)) +
+  geom_line(aes(color = Country, alpha = 1), size = 2, show.legend = FALSE) +
+  geom_point(aes(color = Country, alpha = 1), size = 4, show.legend = FALSE) +
+  geom_text(aes(label=Country), hjust = "bottom", nudge_x = 0.05, angle = 40, check_overlap = TRUE) +
+  theme_minimal()
+```
+
+## Пока всё!
